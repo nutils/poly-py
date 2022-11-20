@@ -1,0 +1,25 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - release/*
+jobs:
+  package:
+    name: Build and test package
+    uses: evalf/workflow-maturin/.github/workflows/build-and-test.yaml@release/1
+    with:
+      targets: |
+        defaults = dict(python='cp310', test=True)
+        targets = []
+        targets.extend(defaults | dict(os='linux', arch=arch) for arch in ('x86_64', 'aarch64'))
+        targets.extend(defaults | dict(os='macos', arch=arch) for arch in ('x86_64', 'universal2'))
+        targets.extend(defaults | dict(os='windows', arch=arch) for arch in ('x86_64', 'i686'))
+  docs:
+    name: Build documentation
+    needs: package
+    uses: evalf/workflow-sphinx/.github/workflows/build.yaml@release/1
+    with:
+      # tomli is needed for Python<3.11
+      requirements: 'tomli'
