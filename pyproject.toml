@@ -1,0 +1,15 @@
+[project]
+name = "nutils-poly"
+requires-python = ">=3.7"
+dependencies = [
+    "numpy",
+]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[build-system]
+requires = ["maturin>=0.14,<0.15"]
+build-backend = "maturin"
