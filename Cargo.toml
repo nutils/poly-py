@@ -1,0 +1,20 @@
+[package]
+name = "nutils-poly-py"
+version = "1.0.0"
+authors = ["Evalf <info@evalf.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/nutils/poly-py"
+description = "Low-level functions for evaluating and manipulating polynomials (Python bindings)"
+
+[lib]
+name = "nutils_poly"
+crate-type = ["cdylib"]
+
+[dependencies]
+ndarray = "0.15"
+numpy = "0.17"
+nutils-poly = "1"
+pyo3 = { version = "0.17", features = ["extension-module", "abi3-py37"] }
+sha1 = "0.10.5"
+sqnc = { version = "1", features = ["ndarray"] }
