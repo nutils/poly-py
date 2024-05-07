@@ -1,6 +1,6 @@
 [project]
 name = "nutils-poly"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dependencies = [
     "numpy",
 ]
