@@ -13,8 +13,8 @@ jobs:
       targets: |
         defaults = dict(python='cp310', test=True)
         targets = []
-        targets.extend(defaults | dict(os='linux', arch=arch) for arch in ('x86_64', 'aarch64'))
-        targets.extend(defaults | dict(os='macos', arch=arch) for arch in ('x86_64', 'universal2'))
+        targets.extend(defaults | dict(os=os, arch=arch) for os in ('linux', 'musllinux') for arch in ('x86_64', 'aarch64'))
+        targets.append(defaults | dict(os='macos', arch='universal2'))
         targets.extend(defaults | dict(os='windows', arch=arch) for arch in ('x86_64', 'i686'))
   docs:
     name: Build documentation

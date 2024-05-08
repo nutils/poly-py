@@ -1,5 +1,8 @@
 use ndarray::{ArrayBase, ArrayD, ArrayViewD, Data, Dimension};
-use numpy::{PyArray, PyArray2, PyArrayDyn, PyReadonlyArray2, PyReadonlyArrayDyn, ToPyArray};
+use numpy::{
+    PyArray, PyArray2, PyArrayDyn, PyArrayMethods, PyReadonlyArray2, PyReadonlyArrayDyn,
+    PyUntypedArrayMethods, ToPyArray,
+};
 use nutils_poly::{MulPlan, MulVar, PartialDerivPlan, Power};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyValueError;
@@ -219,7 +222,7 @@ fn eval<'py>(
     py: Python<'py>,
     coeffs: PyReadonlyArrayDyn<f64>,
     values: PyReadonlyArrayDyn<f64>,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let values = values.as_array();
     let Some((nvars, values_leading_shape)) = values.shape().split_last() else {
         return Err(PyValueError::new_err("expected `values` with at least one axis"));
@@ -245,7 +248,7 @@ fn eval<'py>(
             result.push(nutils_poly::eval(coeffs, &values, degree).unwrap());
         }
     }
-    PyArray::from_vec(py, result).reshape(result_shape)
+    PyArray::from_vec_bound(py, result).reshape(result_shape)
 }
 
 /// Evaluates all pairs of polynomials and values.
@@ -276,7 +279,7 @@ fn eval_outer<'py>(
     py: Python<'py>,
     coeffs: PyReadonlyArrayDyn<f64>,
     values: PyReadonlyArrayDyn<f64>,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let values = values.as_array();
     let Some((nvars, values_leading_shape)) = values.shape().split_last() else {
         return Err(PyValueError::new_err("expected `values` with at least one axis"));
@@ -318,7 +321,7 @@ fn eval_outer<'py>(
             }
         }
     }
-    PyArray::from_vec(py, result).reshape(result_shape)
+    PyArray::from_vec_bound(py, result).reshape(result_shape)
 }
 
 /// Plan for the partial derivative of a polynomial.
@@ -353,14 +356,14 @@ fn eval_outer<'py>(
 /// :func:`partial_deriv` : Compute the partial derivative without a plan.
 /// :func:`GradPlan` : Plan for the gradient of a polynomial.
 #[pyclass]
-#[pyo3(name = "PartialDerivPlan")]
+#[pyo3(name = "PartialDerivPlan", module = "nutils_poly")]
 #[derive(Debug, Clone)]
-#[pyo3(text_signature = "(nvars, degree, var)", module = "nutils_poly")]
 struct PyPartialDerivPlan(PartialDerivPlan);
 
 #[pymethods]
 impl PyPartialDerivPlan {
     #[new]
+    #[pyo3(text_signature = "(nvars, degree, var)")]
     fn new(nvars: usize, degree: Power, var: usize) -> PyResult<Self> {
         if let Some(plan) = PartialDerivPlan::new(nvars, degree, var) {
             Ok(Self(plan))
@@ -372,7 +375,7 @@ impl PyPartialDerivPlan {
         &self,
         py: Python<'py>,
         coeffs: PyReadonlyArrayDyn<f64>,
-    ) -> PyResult<&'py PyArrayDyn<f64>> {
+    ) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
         let (coeffs, leading_shape) =
             as_coeffs_dyn_with_ncoeffs(&coeffs, self.0.ncoeffs_input(), "coeffs")?;
         let result_shape = shape![leading_shape, [self.0.ncoeffs_output()]];
@@ -387,7 +390,7 @@ impl PyPartialDerivPlan {
                 result.extend(self.0.apply(coeffs).unwrap().iter());
             }
         }
-        PyArray::from_vec(py, result).reshape(result_shape)
+        PyArray::from_vec_bound(py, result).reshape(result_shape)
     }
 }
 
@@ -440,7 +443,7 @@ fn partial_deriv<'py>(
     coeffs: PyReadonlyArrayDyn<f64>,
     nvars: usize,
     var: usize,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let Some(ncoeffs) = coeffs.shape().last() else {
         return Err(PyValueError::new_err("expected `coeffs` with at least one axis"));
     };
@@ -465,9 +468,8 @@ fn partial_deriv<'py>(
 /// :func:`grad` : Compute the gradient without a plan.
 /// :func:`PartialDerivPlan` : Plan for the partial derivative of a polynomial.
 #[pyclass]
-#[pyo3(name = "GradPlan")]
+#[pyo3(name = "GradPlan", module = "nutils_poly")]
 #[derive(Debug, Clone)]
-#[pyo3(text_signature = "(nvars, degree)", module = "nutils_poly")]
 struct PyGradPlan {
     plans: Box<[PartialDerivPlan]>,
     ncoeffs_input: usize,
@@ -477,6 +479,7 @@ struct PyGradPlan {
 #[pymethods]
 impl PyGradPlan {
     #[new]
+    #[pyo3(text_signature = "(nvars, degree)")]
     fn new(nvars: usize, degree: Power) -> Self {
         let plans: Box<[_]> = Iterator::map(0..nvars, |var| {
             PartialDerivPlan::new(nvars, degree, var).unwrap()
@@ -497,7 +500,7 @@ impl PyGradPlan {
         &self,
         py: Python<'py>,
         coeffs: PyReadonlyArrayDyn<f64>,
-    ) -> PyResult<&'py PyArrayDyn<f64>> {
+    ) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
         let (coeffs, leading_shape) =
             as_coeffs_dyn_with_ncoeffs(&coeffs, self.ncoeffs_input, "coeffs")?;
         let result_shape = shape![leading_shape, [self.plans.len(), self.ncoeffs_output]];
@@ -516,7 +519,7 @@ impl PyGradPlan {
                 }
             }
         }
-        PyArray::from_vec(py, result).reshape(result_shape)
+        PyArray::from_vec_bound(py, result).reshape(result_shape)
     }
     #[getter]
     fn ncoeffs_output(&self) -> usize {
@@ -559,7 +562,7 @@ fn grad<'py>(
     py: Python<'py>,
     coeffs: PyReadonlyArrayDyn<f64>,
     nvars: usize,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let Some(ncoeffs) = coeffs.shape().last() else {
         return Err(PyValueError::new_err("expected `coeffs` with at least one axis"));
     };
@@ -634,11 +637,11 @@ impl PyMulVar {
         hasher.finish()
     }
     #[getter]
-    fn __nutils_hash__<'py>(&self, py: Python<'py>) -> &'py PyBytes {
+    fn __nutils_hash__<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
         let mut hasher = Sha1::new();
         hasher.update(self.__repr__().as_bytes());
         let digest = hasher.finalize();
-        PyBytes::new(py, &digest)
+        PyBytes::new_bound(py, &digest)
     }
 }
 
@@ -690,17 +693,14 @@ impl PyMulVar {
 /// :meth:`MulPlan.same_vars` : Create a plan for the multiplication of two polynomials in the same variables.
 /// :meth:`MulPlan.different_vars` : Create a plan for the multiplication of two polynomials in different variables.
 #[pyclass]
-#[pyo3(name = "MulPlan")]
-#[pyo3(
-    text_signature = "(vars, degree_left, degree_right)",
-    module = "nutils_poly"
-)]
+#[pyo3(name = "MulPlan", module = "nutils_poly")]
 #[derive(Debug, Clone)]
 struct PyMulPlan(MulPlan);
 
 #[pymethods]
 impl PyMulPlan {
     #[new]
+    #[pyo3(text_signature = "(vars, degree_left, degree_right)")]
     fn new(vars: Vec<PyMulVar>, degree_left: Power, degree_right: Power) -> Self {
         Self(MulPlan::new(
             &vars.as_sqnc().map(|var| var.0),
@@ -751,7 +751,7 @@ impl PyMulPlan {
         py: Python<'py>,
         coeffs_left: PyReadonlyArrayDyn<f64>,
         coeffs_right: PyReadonlyArrayDyn<f64>,
-    ) -> PyResult<&'py PyArrayDyn<f64>> {
+    ) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
         let (coeffs_left, leading_shape_left) =
             as_coeffs_dyn_with_ncoeffs(&coeffs_left, self.0.ncoeffs_left(), "coeffs_left")?;
         let (coeffs_right, leading_shape_right) =
@@ -776,7 +776,7 @@ impl PyMulPlan {
                 result.extend(self.0.apply(coeffs_left, coeffs_right).unwrap().iter());
             }
         }
-        PyArray::from_vec(py, result).reshape(result_shape)
+        PyArray::from_vec_bound(py, result).reshape(result_shape)
     }
     #[getter]
     fn ncoeffs_output(&self) -> usize {
@@ -853,7 +853,7 @@ fn mul<'py>(
     coeffs_left: PyReadonlyArrayDyn<f64>,
     coeffs_right: PyReadonlyArrayDyn<f64>,
     vars: Vec<PyMulVar>,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let Some(ncoeffs_left) = coeffs_left.shape().last() else {
         return Err(PyValueError::new_err("expected `coeffs_left` with at least one axis"));
     };
@@ -923,7 +923,7 @@ fn mul_same_vars<'py>(
     coeffs_left: PyReadonlyArrayDyn<f64>,
     coeffs_right: PyReadonlyArrayDyn<f64>,
     nvars: usize,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let Some(ncoeffs_left) = coeffs_left.shape().last() else {
         return Err(PyValueError::new_err("expected `coeffs_left` with at least one axis"));
     };
@@ -995,7 +995,7 @@ fn mul_different_vars<'py>(
     coeffs_right: PyReadonlyArrayDyn<f64>,
     nvars_left: usize,
     nvars_right: usize,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let Some(ncoeffs_left) = coeffs_left.shape().last() else {
         return Err(PyValueError::new_err("expected `coeffs_left` with at least one axis"));
     };
@@ -1029,7 +1029,7 @@ fn composition_with_inner_matrix<'py>(
     inner_nvars: usize,
     outer_nvars: usize,
     outer_degree: Power,
-) -> PyResult<&'py PyArray2<f64>> {
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
     let inner_coeffs = inner_coeffs.as_array();
     if inner_coeffs.shape()[0] != outer_nvars {
         return Err(PyValueError::new_err(format!(
@@ -1053,7 +1053,7 @@ fn composition_with_inner_matrix<'py>(
         outer_degree,
     )
     .map_err(|err| PyValueError::new_err(err.to_string()))?;
-    Ok(result.to_pyarray(py))
+    Ok(result.to_pyarray_bound(py))
 }
 
 /// Return coefficients for the given degree.
@@ -1098,7 +1098,7 @@ fn change_degree<'py>(
     coeffs: PyReadonlyArrayDyn<f64>,
     nvars: usize,
     new_degree: Power,
-) -> PyResult<&'py PyArrayDyn<f64>> {
+) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
     let (coeffs, degree, _, leading_shape) = as_coeffs_dyn(&coeffs, nvars, "coeffs")?;
     let Some(new_indices) = nutils_poly::MapDegree::new(nvars, degree, new_degree) else {
         return Err(PyValueError::new_err(
@@ -1116,7 +1116,7 @@ fn change_degree<'py>(
             new_coeffs[*new_index] = *coeff;
         }
     }
-    Ok(PyArray::from_owned_array(py, new_coeffs))
+    Ok(PyArray::from_owned_array_bound(py, new_coeffs))
 }
 
 /// Low-level functions for evaluating and manipulating polynomials.
@@ -1173,7 +1173,7 @@ fn change_degree<'py>(
 /// .. _lexicographic order: https://en.wikipedia.org/wiki/Lexicographic_order
 #[pymodule]
 #[pyo3(name = "nutils_poly")]
-fn pymod(_py: Python, m: &PyModule) -> PyResult<()> {
+fn pymod(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyMulVar>()?;
     m.add_class::<PyMulPlan>()?;
     m.add_class::<PyPartialDerivPlan>()?;
